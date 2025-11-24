@@ -5,6 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Universal Converter & AdSense Ready</title>
+
+    <!-- !!! IMPORTANT: PASTE YOUR UNIQUE ADSENSE META TAG HERE !!! -->
+    <!-- The tag will look like this, but with your unique code: -->
+    <!-- <meta name="google-adsense-account" content="ca-pub-1234567890123456"> -->
+    
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -29,18 +34,6 @@
             border-bottom: 3px solid #10b981; /* Emerald green */
             color: #10b981;
             font-weight: 700;
-        }
-        /* Custom spinner for loading state */
-        .spinner {
-            border: 4px solid rgba(0, 0, 0, 0.1);
-            border-left-color: #10b981;
-            border-radius: 50%;
-            width: 24px;
-            height: 24px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -99,11 +92,10 @@
 
         <!-- Tab Content: Currency Converter -->
         <div id="currency-content" class="tab-content hidden">
-            <h2 class="text-xl font-bold text-gray-800 mb-4">Currency Conversion (Live Rates)</h2>
-            <div id="currencyLoading" class="flex items-center justify-center py-6 hidden">
-                <div class="spinner mr-3"></div>
-                <span class="text-gray-600">Fetching live rates...</span>
-            </div>
+            <h2 class="text-xl font-bold text-gray-800 mb-2">Currency Conversion</h2>
+            <p class="text-sm text-yellow-700 bg-yellow-100 p-2 rounded-lg mb-4">
+                Using **static, non-live rates** for stability in this environment.
+            </p>
             
             <div class="mb-4">
                 <label for="currencyAmount" class="block text-sm font-medium text-gray-700 mb-1">Amount</label>
@@ -130,7 +122,7 @@
                 <p id="currencyResult" class="text-gray-800 text-xl font-bold">--</p>
                 <p id="rateInfo" class="text-sm text-gray-600 mt-2 italic">Rate: 1 <span id="infoFrom"></span> = <span id="infoRate">--</span> <span id="infoTo"></span></p>
             </div>
-            <p id="currencyError" class="text-red-500 text-sm mt-2 hidden">Error fetching or processing rates. Please try again.</p>
+            <p id="currencyError" class="text-red-500 text-sm mt-2 hidden">Please enter a valid amount.</p>
         </div>
 
     </div>
@@ -145,10 +137,22 @@
     <script>
         // --- Shared Application State ---
         let currentTab = 'temperature';
-        const apiKey = ""; // API key is handled by the execution environment
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-        
         let exchangeRates = {}; // Store fetched rates, base is USD
+
+        // Static rates (USD as base: 1 USD = X Currency)
+        const STATIC_EXCHANGE_RATES = {
+            USD: 1.0,
+            EUR: 0.92, // Euro
+            GBP: 0.80, // British Pound
+            JPY: 155.00, // Japanese Yen
+            CAD: 1.36, // Canadian Dollar
+            AUD: 1.50, // Australian Dollar
+            CHF: 0.90, // Swiss Franc
+            CNY: 7.20, // Chinese Yuan
+            INR: 83.50, // Indian Rupee
+            BRL: 5.10, // Brazilian Real
+            KRW: 1360.00 // South Korean Won
+        };
 
         // --- Core Functions: Temperature Converter ---
 
@@ -191,7 +195,16 @@
         // --- Core Functions: Currency Converter ---
 
         /**
-         * Converts currency based on the current UI state and fetched rates.
+         * Loads static rates and initializes the currency converter.
+         */
+        function loadStaticRates() {
+            exchangeRates = STATIC_EXCHANGE_RATES;
+            populateCurrencySelects(exchangeRates);
+            convertCurrency();
+        }
+
+        /**
+         * Converts currency based on the current UI state and static rates.
          */
         function convertCurrency() {
             const amountInput = document.getElementById('currencyAmount');
@@ -199,30 +212,32 @@
             const toSelect = document.getElementById('currencyTo');
             const resultElement = document.getElementById('currencyResult');
             const rateInfoElement = document.getElementById('rateInfo');
+            const errorElement = document.getElementById('currencyError');
 
             const amount = parseFloat(amountInput.value);
             const from = fromSelect.value;
             const to = toSelect.value;
             
             if (isNaN(amount) || amount < 0) {
-                resultElement.textContent = 'Invalid Amount';
+                resultElement.textContent = '--';
                 rateInfoElement.classList.add('hidden');
+                errorElement.classList.remove('hidden');
                 return;
             }
-
+            errorElement.classList.add('hidden');
             rateInfoElement.classList.remove('hidden');
 
             if (!exchangeRates[from] || !exchangeRates[to]) {
-                resultElement.textContent = 'Rates not loaded.';
+                resultElement.textContent = 'Rates unavailable.';
                 return;
             }
 
             // 1. Convert "From" amount to the base currency (USD)
-            // exchangeRates[from] is the rate to get 1 USD. So 1/exchangeRates[from] is the rate to get 1 of the "From" currency in USD.
+            // Divide by the rate to USD to get the value in USD
             const usdAmount = amount / exchangeRates[from];
 
             // 2. Convert USD amount to the "To" currency
-            // exchangeRates[to] is the rate to get 1 USD. So usdAmount * exchangeRates[to] gives the amount in the "To" currency.
+            // Multiply by the rate from USD to the target currency
             const finalAmount = usdAmount * exchangeRates[to];
             
             // Calculate the direct exchange rate for info display
@@ -235,107 +250,6 @@
             document.getElementById('infoFrom').textContent = from;
             document.getElementById('infoRate').textContent = directRate.toFixed(4);
             document.getElementById('infoTo').textContent = to;
-        }
-
-
-        /**
-         * Fetches current exchange rates using Gemini API with Google Search grounding.
-         */
-        async function fetchRates() {
-            const loadingElement = document.getElementById('currencyLoading');
-            const errorElement = document.getElementById('currencyError');
-            const converterContent = document.getElementById('currency-content');
-
-            loadingElement.classList.remove('hidden');
-            errorElement.classList.add('hidden');
-            // Hide the converter content temporarily while loading
-            converterContent.querySelectorAll('input, select, .bg-emerald-50').forEach(el => el.classList.add('opacity-50', 'pointer-events-none'));
-
-
-            const userQuery = "Provide the current exchange rates for USD, EUR, GBP, JPY, CAD, AUD, CHF, CNY, INR, BRL, and KRW, using USD as the base currency (1 USD = X). Format the result as a simple JSON object where keys are the 3-letter currency code (e.g., USD, EUR) and values are the exchange rate (number).";
-
-            const payload = {
-                contents: [{ parts: [{ text: userQuery }] }],
-                tools: [{ "google_search": {} }],
-                systemInstruction: {
-                    parts: [{ text: "You are a data retrieval agent. Your task is to accurately fetch current foreign exchange rates and return them strictly in the requested JSON format, using Google Search grounding. Do not include any explanatory text, markdown formatting (like ```json), or notes outside the JSON object itself." }]
-                },
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: {
-                            USD: { "type": "NUMBER" },
-                            EUR: { "type": "NUMBER" },
-                            GBP: { "type": "NUMBER" },
-                            JPY: { "type": "NUMBER" },
-                            CAD: { "type": "NUMBER" },
-                            AUD: { "type": "NUMBER" },
-                            CHF: { "type": "NUMBER" },
-                            CNY: { "type": "NUMBER" },
-                            INR: { "type": "NUMBER" },
-                            BRL: { "type": "NUMBER" },
-                            KRW: { "type": "NUMBER" }
-                        },
-                        // Ensure USD is 1.0, though the model should provide this if requested correctly.
-                        required: ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "BRL", "KRW"]
-                    }
-                }
-            };
-            
-            try {
-                // Implementing basic exponential backoff
-                const MAX_RETRIES = 3;
-                let response = null;
-                for (let i = 0; i < MAX_RETRIES; i++) {
-                    response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (response.ok) break;
-                    
-                    // Simple exponential delay
-                    if (i < MAX_RETRIES - 1) {
-                        await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
-                    }
-                }
-
-                if (!response || !response.ok) {
-                    throw new Error(`API failed after ${MAX_RETRIES} retries.`);
-                }
-
-                const result = await response.json();
-                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                
-                if (!jsonText) {
-                     throw new Error("Invalid response structure or empty content from API.");
-                }
-
-                // The model returns a string of JSON, we need to parse it
-                const rates = JSON.parse(jsonText);
-                
-                // Final validation: ensure rates were retrieved
-                if (!rates || typeof rates.USD !== 'number') {
-                    throw new Error("Parsed data is not a valid exchange rate object.");
-                }
-
-                exchangeRates = rates;
-                exchangeRates.USD = 1.0; // Ensure USD base rate is exactly 1.0
-                
-                populateCurrencySelects(exchangeRates);
-                convertCurrency(); // Run initial conversion
-                
-            } catch (e) {
-                console.error("Error fetching exchange rates:", e);
-                errorElement.classList.remove('hidden');
-                document.getElementById('currencyResult').textContent = 'Rates unavailable.';
-            } finally {
-                loadingElement.classList.add('hidden');
-                // Restore interactivity
-                converterContent.querySelectorAll('input, select, .bg-emerald-50').forEach(el => el.classList.remove('opacity-50', 'pointer-events-none'));
-            }
         }
 
         /**
@@ -384,7 +298,7 @@
 
             // If switching to currency for the first time, load rates
             if (tabId === 'currency' && Object.keys(exchangeRates).length === 0) {
-                fetchRates();
+                loadStaticRates();
             }
         }
 
@@ -394,8 +308,10 @@
             // Initialize temperature conversion on load
             convertTemperature();
             
-            // Initial call to load rates (hidden behind the tab)
-            // Rates are only fetched when the currency tab is first clicked.
+            // If currency tab is the default or loaded first, load rates
+            if (currentTab === 'currency') {
+                loadStaticRates();
+            }
         };
     </script>
 
